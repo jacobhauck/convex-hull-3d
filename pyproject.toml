@@ -1,0 +1,62 @@
+[project]
+name = "convex_hull_3d"
+description = "Fitting convex hulls in 3D reciprocal space"
+dynamic = ["version"]
+requires-python = ">=3.10"
+dependencies = [
+    "matplotlib>=3.8.4",
+    "scikit-image>=0.23.2",
+]
+license = { text = "GPL3.0" }
+
+[build-system]
+requires = [
+  "setuptools",
+   "wheel",
+   "toml",
+   "versioningit"
+]
+build-backend = "setuptools.build_meta"
+
+[project.optional-dependencies]
+lint = ["ruff>=0.2.0"]
+test = [
+  "pytest>=8.0.2,<8.1.0",
+  "pytest-cov>=4.1.0,<4.2.0",
+]
+
+[tool.versioningit.vcs]
+method = "git"
+match = ["v*"]
+default-tag = "0.0.1"
+
+[tool.versioningit.next-version]
+method = "minor"
+
+[tool.versioningit.format]
+distance = "{next_version}"
+dirty = "{next_version}"
+distance-dirty = "{next_version}"
+
+[tool.versioningit.write]
+file = "src/convex_hull/_version.py"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.yml","*.yaml","*.ini"]
+
+[tool.pylint]
+max-line-length = 80
+disable = ["too-many-locals",
+           "too-many-statements",
+           "too-many-instance-attributes",
+           "too-many-arguments",
+           "duplicate-code"
+]
+extension-pkg-whitelist = ["PyQt5"]
+
+[tool.ruff]
+include = ["pyproject.toml", "src/**/*.py", "scripts/**/*.py", "tests/**/*.py"]
