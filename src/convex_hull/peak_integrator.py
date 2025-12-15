@@ -76,7 +76,8 @@ class PeakIntegrator:
             intensity,
             peak_centers,
             return_hulls=False,
-            return_headers=False
+            return_headers=False,
+            mask=None
     ):
         """
         Integrates all peaks for the bank
@@ -95,6 +96,9 @@ class PeakIntegrator:
             Whether to return convex hulls of peak regions for visualization
         return_headers:
             Whether to return column headers for the intensity data
+        mask:
+            Optional (D, H, W)-shaped boolean array indicating which pixels
+            are valid
 
         Return
         ------
@@ -105,7 +109,7 @@ class PeakIntegrator:
 
         # Get masks and hulls
         is_peak, peak_masks, bg_masks, peak_hulls = self._find_peak_regions(
-            intensity, peak_centers
+            intensity, peak_centers, mask=mask
         )
 
         if return_headers:
@@ -145,7 +149,7 @@ class PeakIntegrator:
         else:
             return output_data
 
-    def _find_peak_regions(self, intensity, peak_centers):
+    def _find_peak_regions(self, intensity, peak_centers, mask=None):
         """
         Finds peak regions based on estimated peak centers and an intensity map
 
@@ -156,6 +160,8 @@ class PeakIntegrator:
         peak_centers:
             (n_peaks, 3)-shaped array of (integer) [row, col]
             coordinates of estimated peak centers
+        mask:
+            (D, H, W)-shaped boolean array indicating valid pixels
 
         Return
         ------
@@ -211,7 +217,7 @@ class PeakIntegrator:
                     adjusted_center = self._find_nearest_nonzero_point(adjusted_center, intensity)
 
                     # Grow region
-                    cluster_points = self.region_grower.get_region(intensity, adjusted_center)
+                    cluster_points = self.region_grower.get_region(intensity, adjusted_center, mask=mask)
                 else:
                     cluster_points = np.zeros(0)
             except ValueError:

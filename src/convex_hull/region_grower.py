@@ -38,10 +38,13 @@ class RegionGrower:
         return neighbors_rel
 
     @staticmethod
-    def _is_valid(intensity, layer, row, col):
-        return 0 <= layer < intensity.shape[0] and 0 <= row < intensity.shape[1] and 0 <= col < intensity.shape[2]
+    def _is_valid(intensity, layer, row, col, mask=None):
+        if not (0 <= layer < intensity.shape[0] and 0 <= row < intensity.shape[1] and 0 <= col < intensity.shape[2]):
+            return False
 
-    def get_region(self, intensity, initial):
+        return True if mask is None else mask[layer, row, col]
+
+    def get_region(self, intensity, initial, mask=None):
         """
         Gets the region by growing from the initial point
 
@@ -51,6 +54,7 @@ class RegionGrower:
         - intensity: Array of shape (D, H, W) of intensity values
 
         - initial: (layer, row, col) coordinates of initial point from which to grow
+        - mask: optional (D, H, W) boolean array indicating which points are valid
 
         Return
         ------
@@ -77,7 +81,7 @@ class RegionGrower:
                 neighbor_row = row + neighbor_row_rel
                 neighbor_col = col + neighbor_col_rel
 
-                if not self._is_valid(intensity, neighbor_layer, neighbor_row, neighbor_col):
+                if not self._is_valid(intensity, neighbor_layer, neighbor_row, neighbor_col, mask=mask):
                     continue
 
                 neighbor_intensity = int(intensity[neighbor_layer, neighbor_row, neighbor_col])
