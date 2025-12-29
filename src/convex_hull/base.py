@@ -302,7 +302,6 @@ def project_hull(hull, xind, yind):
 
 
 def visualize_peak(intensity, hull):
->>>>>>> 5a898e74aaa0cdff52612d08fdbb4b129f9cc1d4
     x, y, z = np.meshgrid(
         np.arange(intensity.shape[0]),
         np.arange(intensity.shape[1]),
