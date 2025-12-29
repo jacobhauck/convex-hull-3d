@@ -82,9 +82,6 @@ def integrate_peak(
     )
 
 
-<<<<<<< HEAD
-def visualize_peak(intensity, hull, intensity_opacity=0.15):
-=======
 def plot_fit(
         hist_ws,
         gauss_params,
@@ -301,7 +298,7 @@ def project_hull(hull, xind, yind):
     return projected_hull
 
 
-def visualize_peak(intensity, hull):
+def visualize_peak(intensity, hull, intensity_opacity=0.2):
     x, y, z = np.meshgrid(
         np.arange(intensity.shape[0]),
         np.arange(intensity.shape[1]),
