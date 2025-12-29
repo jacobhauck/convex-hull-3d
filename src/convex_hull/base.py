@@ -1,5 +1,7 @@
 from collections import namedtuple
 
+import numpy as np
+
 from .region_grower import RegionGrower
 from .peak_integrator import PeakIntegrator
 
@@ -66,7 +68,7 @@ def integrate_peak(
     )
 
 
-def visualize_peak(intensity, hull):
+def visualize_peak(intensity, hull, intensity_opacity=0.15):
     x, y, z = np.meshgrid(
         np.arange(intensity.shape[0]),
         np.arange(intensity.shape[1]),
@@ -89,8 +91,8 @@ def visualize_peak(intensity, hull):
             x=x.flatten(),
             y=y.flatten(),
             z=z.flatten(),
-            value=intensity,
-            opacity=0.15,
+            value=intensity.flatten(),
+            opacity=intensity_opacity,
             surface_count=17
         ),
         go.Scatter3d(
