@@ -6,14 +6,18 @@ from scipy.linalg import svd
 
 from .region_grower import RegionGrower
 from .peak_integrator import PeakIntegrator
-from single_peak_integration import (
-    get_grid_data,
-    rotation_matrix,
-    gaussian_mixture,
-    rebin_histogram,
-    marginalize_1d,
-    marginalize_2d,
-)
+
+try:
+    from single_peak_integration import (
+        get_grid_data,
+        rotation_matrix,
+        gaussian_mixture,
+        rebin_histogram,
+        marginalize_1d,
+        marginalize_2d,
+    )
+except Exception as e:
+    pass
 
 
 IntegrationResult = namedtuple('IntegrationResult', [
