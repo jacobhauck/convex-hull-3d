@@ -240,7 +240,7 @@ class PeakIntegrator:
             )
 
             # Build masks and hulls
-            masks, hulls = self._make_peak_hulls_and_masks(core_points, im_shape)
+            masks, hulls = self._make_peak_hulls_and_masks(core_points, im_shape, mask=mask)
             peak_hulls.append(hulls)
             peak_mask, inner_mask, bg_mask = masks
             peak_masks.append(peak_mask)
@@ -458,7 +458,7 @@ class PeakIntegrator:
 
         raise ValueError('Invalid intensity map--all intensities are 0!')
 
-    def _make_peak_hulls_and_masks(self, core_points, im_shape):
+    def _make_peak_hulls_and_masks(self, core_points, im_shape, mask=None):
         """
         Generate peak hulls and masks
 
@@ -469,6 +469,8 @@ class PeakIntegrator:
             the core of the peak
         im_shape:
             [D, H, W] integers giving the shape of the image
+        mask:
+            Optional (D, H, W) mask indicating which pixels are valid
 
         Return
         ------
@@ -493,9 +495,9 @@ class PeakIntegrator:
         outer_hull = self._expand_convex_hull(core_hull, outer_scale)
 
         # Generate masks
-        peak_mask = self._hull_mask(peak_hull, im_shape)
-        inner_mask = self._hull_mask(inner_hull, im_shape)
-        outer_mask = self._hull_mask(outer_hull, im_shape)
+        peak_mask = self._hull_mask(peak_hull, im_shape, mask=mask)
+        inner_mask = self._hull_mask(inner_hull, im_shape, mask=mask)
+        outer_mask = self._hull_mask(outer_hull, im_shape, mask=mask)
 
         # Remove inner mask pixels to get background pixels (for now
         # ignoring the possibility of containment in a *different* peak's
@@ -506,7 +508,7 @@ class PeakIntegrator:
                 (core_hull, peak_hull, inner_hull, outer_hull))
 
     @staticmethod
-    def _hull_mask(hull, shape):
+    def _hull_mask(hull, shape, mask=None):
         """
         Generate an OffsetMask object with a mask that is True inside
         the given convex hull and False outside
@@ -517,6 +519,9 @@ class PeakIntegrator:
             ConvexHull object representing the 3D convex hull.
         shape:
             tuple (D, H, W) giving the shape of the image
+        mask:
+            Optional mask of size (D, H, W) indicating which pixels 
+            are valid
 
         Return
         ------
@@ -544,9 +549,15 @@ class PeakIntegrator:
 
         # Use Delaunay triangulation to efficiently check if points are inside the convex hull
         delaunay = Delaunay(hull.points[hull.vertices])
-        mask = (delaunay.find_simplex(grid_points) >= 0).astype(bool)
+        hull_mask = (delaunay.find_simplex(grid_points) >= 0).astype(bool)
+        if mask is not None:
+            hull_mask &= mask[
+                min_vert[0]: min_vert[0] + d_m, 
+                min_vert[1]: min_vert[1] + h_m,
+                min_vert[2]: min_vert[2] + w_m
+            ]
 
-        return OffsetMask(mask, min_vert)
+        return OffsetMask(hull_mask, min_vert)
 
     @staticmethod
     def _expand_convex_hull(hull, scale_factor):
