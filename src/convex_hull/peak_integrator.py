@@ -551,11 +551,12 @@ class PeakIntegrator:
         delaunay = Delaunay(hull.points[hull.vertices])
         hull_mask = (delaunay.find_simplex(grid_points) >= 0).astype(bool)
         if mask is not None:
-            hull_mask &= mask[
-                min_vert[0]: min_vert[0] + d_m, 
-                min_vert[1]: min_vert[1] + h_m,
-                min_vert[2]: min_vert[2] + w_m
-            ]
+            i = (
+                slice(min_vert[0], min_vert[0] + d_m),
+                slice(min_vert[1], min_vert[1] + h_m),
+                slice(min_vert[2], min_vert[2] + w_m)
+            )
+            hull_mask &= mask[i[0], i[1], i[2]]
 
         return OffsetMask(hull_mask, min_vert)
 
