@@ -15,6 +15,18 @@ from single_peak_integration import (
     marginalize_2d,
 )
 
+try:
+    from single_peak_integration import (
+        get_grid_data,
+        rotation_matrix,
+        gaussian_mixture,
+        rebin_histogram,
+        marginalize_1d,
+        marginalize_2d,
+    )
+except Exception as e:
+    pass
+
 
 IntegrationResult = namedtuple('IntegrationResult', [
     'peak_intensity',
@@ -302,7 +314,7 @@ def project_hull(hull, xind, yind):
     return projected_hull
 
 
-def visualize_peak(intensity, hull):
+def visualize_peak(intensity, hull, intensity_opacity=0.2):
     x, y, z = np.meshgrid(
         np.arange(intensity.shape[0]),
         np.arange(intensity.shape[1]),
