@@ -6,6 +6,13 @@ from math import ceil
 import numpy as np
 
 
+def _is_valid(d, h, w, layer, row, col, mask):
+    if not (0 <= layer < d and 0 <= row < h and 0 <= col < w):
+        return False
+
+    return True if mask is None else mask[layer, row, col]
+
+
 class RegionGrower:
     def __init__(self, distance_threshold, min_intensity, max_size):
         """
@@ -36,13 +43,6 @@ class RegionGrower:
                         neighbors_rel.append((layer, row, col))
 
         return neighbors_rel
-
-    @staticmethod
-    def _is_valid(intensity, layer, row, col, mask=None):
-        if not (0 <= layer < intensity.shape[0] and 0 <= row < intensity.shape[1] and 0 <= col < intensity.shape[2]):
-            return False
-
-        return True if mask is None else mask[layer, row, col]
 
     def get_region(self, intensity, initial, mask=None):
         """
@@ -81,7 +81,13 @@ class RegionGrower:
                 neighbor_row = row + neighbor_row_rel
                 neighbor_col = col + neighbor_col_rel
 
-                if not self._is_valid(intensity, neighbor_layer, neighbor_row, neighbor_col, mask=mask):
+                if not _is_valid(
+                        *intensity.shape,
+                        neighbor_layer,
+                        neighbor_row,
+                        neighbor_col,
+                        mask
+                ):
                     continue
 
                 neighbor_intensity = int(intensity[neighbor_layer, neighbor_row, neighbor_col])
@@ -112,3 +118,4 @@ class RegionGrower:
                         cluster.add(neighbor_point)
 
         return np.array(list(cluster), dtype=int)
+

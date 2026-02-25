@@ -1,5 +1,5 @@
 [project]
-name = "convex_hull_3d"
+name = "convex_hull"
 description = "Fitting convex hulls in 3D reciprocal space"
 dynamic = ["version"]
 requires-python = ">=3.10"

@@ -1,3 +1,4 @@
+import enum
 import numpy as np
 from scipy.signal import convolve
 from scipy.spatial import ConvexHull
@@ -6,6 +7,14 @@ from scipy.stats import zscore
 
 from convex_hull.offset_mask import OffsetMask
 from convex_hull.region_grower import RegionGrower
+
+
+class IntegrationStatus(enum.Enum):
+    SUCCEEDED = 0
+    NO_NONZERO_CENTER = 1
+    DID_NOT_GROW = 2
+    LOW_SNR = 3
+    EMPTY_IMAGE = 4
 
 
 class PeakIntegrator:
@@ -35,8 +44,10 @@ class PeakIntegrator:
             region_grower,
             box_size: int = 5,
             smoothing_window_size: int = 5,
+            snap_range: int = 5,
             min_peak_pixels: int = 3,
             min_peak_snr: float = 1.0,
+            background_estimate: str = 'mean',
             outlier_threshold: float = 2.0,
     ):
         """
@@ -52,6 +63,10 @@ class PeakIntegrator:
         smoothing_window_size:
             Size of smoothing window for smoothing
             convolution used to find adjusted peak centers.
+        snap_range:
+            Distance from smoothed maximum point in which to search for
+            a nonzero pixel to start from if the smoothed maximum point
+            is zero in the original intensity map
         min_peak_pixels:
             Minimum number of pixels in grown region needed to
             count it as a peak detection
@@ -60,14 +75,20 @@ class PeakIntegrator:
         outlier_threshold:
             Threshold (in # of standard deviations) for culling
             outliers in the cluster to obtain the core cluster
+        background_estimate:
+            How to estimate the intensity of the background noise; either 
+            'mean' to use the mean within the background shell or 'median' to
+            use the median (excluding 0 values) within the background shell
         """
         self.region_grower = region_grower
 
         assert box_size % 2 == 1, "box_size must be odd"
         self.box_size = box_size
         self.smoothing_window_size = smoothing_window_size
+        self.snap_range = snap_range
         self.min_peak_pixels = min_peak_pixels
         self.min_peak_snr = min_peak_snr
+        self.background_estimate = background_estimate
         self.outlier_threshold = outlier_threshold
 
     def integrate_peaks(
@@ -77,6 +98,7 @@ class PeakIntegrator:
             peak_centers,
             return_hulls=False,
             return_headers=False,
+            return_status=False,
             mask=None
     ):
         """
@@ -96,6 +118,8 @@ class PeakIntegrator:
             Whether to return convex hulls of peak regions for visualization
         return_headers:
             Whether to return column headers for the intensity data
+        return_status:
+            Whether to return integration status for each peak
         mask:
             Optional (D, H, W)-shaped boolean array indicating which pixels
             are valid
@@ -104,11 +128,12 @@ class PeakIntegrator:
         ------
         outputs:
             Array of the peak statistics. Optionally also the peak region
-            convex hulls for visualization.
+            convex hulls for visualization. Optionally also the integration 
+            status for each peak.
         """
 
         # Get masks and hulls
-        is_peak, peak_masks, bg_masks, peak_hulls = self._find_peak_regions(
+        is_peak, peak_masks, bg_masks, peak_hulls, status = self._find_peak_regions(
             intensity, peak_centers, mask=mask
         )
 
@@ -121,7 +146,7 @@ class PeakIntegrator:
 
         # Use masks to compute intensity statistics
         for i_peak in range(len(peak_centers)):
-            if is_peak[i_peak] and len(bg_masks[i_peak].nonzero()) > 0:
+            if is_peak[i_peak] and len(bg_masks[i_peak].nonzero()[0]) > 0:
                 stats = self._calculate_statistics(
                     intensity,
                     peak_masks[i_peak],
@@ -137,17 +162,31 @@ class PeakIntegrator:
                     peak_masks[i_peak] = None
                     bg_masks[i_peak] = None
                     peak_hulls[i_peak] = (None,) * len(peak_hulls[i_peak])
+                    status[i_peak] = IntegrationStatus.LOW_SNR
             else:
                 bg_density, peak_intensity, peak_bg_intensity, sigma = None, None, None, None
 
             output_data.append([
-                bank_id, i_peak, bg_density, peak_intensity, peak_bg_intensity, sigma
+                bank_id,
+                i_peak,
+                bg_density,
+                peak_intensity,
+                peak_bg_intensity,
+                sigma,
             ])
 
+        return_value = [output_data]
+
         if return_hulls:
-            return output_data, peak_hulls
+            return_value.append(peak_hulls)
+        
+        if return_status:
+            return_value.append(status)
+
+        if len(return_value) == 1:
+            return return_value[0]
         else:
-            return output_data
+            return tuple(return_value)
 
     def _find_peak_regions(self, intensity, peak_centers, mask=None):
         """
@@ -166,7 +205,7 @@ class PeakIntegrator:
         Return
         ------
         outputs:
-            4-tuple of the following:
+            5-tuple of the following:
 
             is_peak:
                 (n_peaks,)-shaped array of booleans indicating whether the
@@ -184,6 +223,9 @@ class PeakIntegrator:
             peak_hulls:
                 list of n_peaks 4-tuples (core_hull, peak_hull, inner_hull, outer_hull)
                 containing the hulls for each peak (mainly for visualization)
+            status:
+                list of n_peaks IntegrationStatus objects indicating current 
+                integration status for each peak
         """
         # Store some basic descriptive information about inputs
         im_shape = intensity.shape
@@ -195,6 +237,7 @@ class PeakIntegrator:
         inner_masks = []
         bg_masks = []
         peak_hulls = []
+        status = []
 
         # Smooth the intensity map for finding better peak centers
         smoothed_intensity = self._smooth(intensity)
@@ -206,8 +249,10 @@ class PeakIntegrator:
             # Move center to local maximum *in the smoothed image*
             try:
                 adjusted_center = self._local_max(smoothed_intensity, estimated_center)
+                cur_status = IntegrationStatus.SUCCEEDED
             except ValueError:
                 adjusted_center = None
+                cur_status = IntegrationStatus.NO_NONZERO_CENTER
 
             # Make sure center starts from a non-zero point *in the original
             # image* because we will grow the region based on the original
@@ -222,13 +267,18 @@ class PeakIntegrator:
                     cluster_points = np.zeros(0)
             except ValueError:
                 cluster_points = np.zeros(0)
+                if cur_status == IntegrationStatus.SUCCEEDED:
+                    cur_status = IntegrationStatus.EMPTY_IMAGE
 
             # Check if the region grew enough to be considered a peak
             if cluster_points.shape[0] < self.min_peak_pixels:
+                if cur_status == IntegrationStatus.SUCCEEDED:
+                    cur_status = IntegrationStatus.DID_NOT_GROW
                 peak_masks.append(None)
                 inner_masks.append(None)
                 bg_masks.append(None)
                 peak_hulls.append([None]*4)
+                status.append(cur_status)
                 continue
             else:
                 is_peak[peak_idx] = True
@@ -246,6 +296,7 @@ class PeakIntegrator:
             peak_masks.append(peak_mask)
             inner_masks.append(inner_mask)
             bg_masks.append(bg_mask)
+            status.append(cur_status)
 
         # Now that we have built the preliminary masks we can remove all the
         # inner region pixels from each of the background masks to avoid
@@ -264,10 +315,9 @@ class PeakIntegrator:
             if bg_mask is not None:
                 bg_mask &= not_any_inner_mask  # keep points not in any inner region
 
-        return is_peak, peak_masks, bg_masks, peak_hulls
+        return is_peak, peak_masks, bg_masks, peak_hulls, status
 
-    @staticmethod
-    def _calculate_statistics(intensity, peak_mask, bg_mask):
+    def _calculate_statistics(self, intensity, peak_mask, bg_mask):
         """
         Calculates peak intensity statistics from a peak and background mask
 
@@ -301,12 +351,14 @@ class PeakIntegrator:
         peak_vol = len(peak_indices[0])  # number of pixels in peak
         bg_vol = len(bg_indices[0])  # number of pixels in background
         peak2bg = peak_vol / bg_vol
-        print(peak_vol, bg_vol)
 
         total_peak_intensity = intensity[peak_indices[0], peak_indices[1], peak_indices[2]].sum()
-        total_bg_intensity = intensity[bg_indices[0], bg_indices[1], bg_indices[2]].sum()
-        
-        print(total_peak_intensity, total_bg_intensity)
+        if self.background_estimate == 'mean':
+            total_bg_intensity = intensity[bg_indices[0], bg_indices[1], bg_indices[2]].sum()
+        else:
+            bg_intensity = intensity[bg_indices[0], bg_indices[1], bg_indices[2]]
+            bg_intensity = bg_intensity[bg_intensity > 0]
+            total_bg_intensity = np.median(bg_intensity) * len(bg_indices[0])
 
         peak_bg_intensity = peak2bg * total_bg_intensity
         peak_bg_variance = peak2bg ** 2 * total_bg_intensity
@@ -410,11 +462,10 @@ class PeakIntegrator:
         z_scores = np.abs(zscore(data, axis=0))
         return data[(z_scores < threshold).all(axis=1)]
 
-    @staticmethod
-    def _find_nearest_nonzero_point(start, intensity):
+    def _find_nearest_nonzero_point(self, start, intensity):
         """
         Searches around a given point to find the nearest point with a
-        nonzero intensity
+        nonzero intensity (up to self.snap_range in l^inf distance)
 
         Parameters
         ----------
@@ -433,7 +484,7 @@ class PeakIntegrator:
             return start
 
         idx = [0, 0, 0]
-        for r in range(max(intensity.shape)):
+        for r in range(self.snap_range):
             for axis in range(3):
                 other_axes = tuple(set(range(3)).difference((axis,)))
                 ranges = []
