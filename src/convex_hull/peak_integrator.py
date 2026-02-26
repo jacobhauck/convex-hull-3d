@@ -581,10 +581,12 @@ class PeakIntegrator:
         """
         hull_vertices = hull.points[hull.vertices]
         min_vert = np.maximum(np.min(hull_vertices, axis=0), 0)
+        min_vert = np.floor(min_vert).astype(int)
         max_vert = np.max(hull_vertices, axis=0)
         max_vert[0] = min(max_vert[0], shape[0] - 1)
         max_vert[1] = min(max_vert[1], shape[1] - 1)
         max_vert[2] = min(max_vert[2], shape[2] - 1)
+        max_vert = np.ceil(max_vert).astype(int)
         d_m = int(max_vert[0] - min_vert[0] + 1)
         h_m = int(max_vert[1] - min_vert[1] + 1)
         w_m = int(max_vert[2] - min_vert[2] + 1)
