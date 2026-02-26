@@ -11,7 +11,7 @@ Clone this repository, and then use `pip`
 pip install .
 ```
 
-Only requirements are NumPy, SciPy, and Scikit-Image. Optionally,
+Only hard requirements are NumPy and SciPy. Optionally,
 you can install plotly for 3D visualization of peaks using
 ```commandline
 pip install ".[vis]"

@@ -5,8 +5,7 @@ version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
-    "scipy",
-    "scikit-image>=0.23.2"
+    "scipy"
 ]
 license = { text = "GPL3.0" }
 
