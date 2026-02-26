@@ -6,7 +6,7 @@ from scipy.spatial import ConvexHull
 def visualize_peak(
         intensity: npt.NDArray,
         hull: ConvexHull | None,
-        intensity_opacity=0.15,
+        intensity_opacity: float = 0.15,
         norm: str = 'linear'
 ):
     """
