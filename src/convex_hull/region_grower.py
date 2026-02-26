@@ -7,7 +7,33 @@ import numpy as np
 import numpy.typing as npt
 
 
-def _is_valid(d, h, w, layer, row, col, mask):
+def _is_valid(
+        d: int,
+        h: int,
+        w: int,
+        layer: int,
+        row: int,
+        col: int,
+        mask: npt.NDArray
+) -> bool:
+    """
+    Whether the given point (layer, row, col) is valid in an image of shape 
+    (d, h, w) subject to given mask.
+    
+    Parameters
+    ----------
+    d: depth of image 
+    h: height of image
+    w: width of image
+    layer: layer of point
+    row: row of point
+    col: column of point
+    mask: image mask
+
+    Return
+    ------
+    bool, whether the given point is valid
+    """
     if not (0 <= layer < d and 0 <= row < h and 0 <= col < w):
         return False
 
@@ -38,7 +64,10 @@ class RegionGrower:
     def _get_neighbors_rel(self) -> list[tuple[int, int, int]]:
         """
         Precomputes neighbor relative coordinates
-        :return: list of (layer, row, col) relative coordinates of neighbors
+
+        Return
+        ------
+        list of (layer, row, col) relative coordinates of neighbors
         """
         threshold_int = ceil(self.distance_threshold)
         threshold_sq = self.distance_threshold ** 2
@@ -63,14 +92,13 @@ class RegionGrower:
 
         Parameters
         ----------
-        - intensity: Array of shape (D, H, W) of intensity values
-        - initial: (layer, row, col) coordinates of initial point from which to grow
-        - mask: optional (D, H, W) boolean array indicating which points are valid
+        intensity: Array of shape (D, H, W) of intensity values
+        initial: (layer, row, col) coordinates of initial point from which to grow
+        mask: optional (D, H, W) boolean array indicating which points are valid
 
         Return
         ------
-
-        - cluster: (K, 3) array of coordinates of points in the cluster
+        cluster: (K, 3) array of coordinates of points in the cluster
         """
         initial = tuple(map(int, initial))
         visited, cluster = set(), {initial}
