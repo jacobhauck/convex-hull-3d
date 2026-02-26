@@ -1,5 +1,8 @@
 import enum
+from collections import namedtuple
+
 import numpy as np
+import numpy.typing as npt
 from scipy.signal import convolve
 from scipy.spatial import ConvexHull
 from scipy.spatial import Delaunay
@@ -7,6 +10,17 @@ from scipy.stats import zscore
 
 from convex_hull.offset_mask import OffsetMask
 from convex_hull.region_grower import RegionGrower
+
+IntegrationResult = namedtuple('IntegrationResult', [
+    'peak_intensity',
+    'peak_sigma',
+    'bg_intensity',
+    'bg_density',
+    'peak_hull',
+    'inner_hull',
+    'outer_hull',
+    'status',
+])
 
 
 class IntegrationStatus(enum.Enum):
@@ -18,30 +32,12 @@ class IntegrationStatus(enum.Enum):
 
 
 class PeakIntegrator:
-    @staticmethod
-    def build_from_dictionary(integration_params):
-        region_growth_params = {
-            "distance_threshold": integration_params.pop("region_growth_distance_threshold"),
-            "min_intensity": integration_params.pop("region_growth_minimum_intensity"),
-            "max_size": integration_params.pop("region_growth_maximum_pixel_radius")
-        }
-        other_params = {
-            "box_size": integration_params["peak_center_box_size"],
-            "smoothing_window_size": integration_params["peak_smoothing_window_size"],
-            "min_peak_pixels": integration_params["peak_minimum_pixels"],
-            "min_peak_snr": integration_params["peak_minimum_signal_to_noise"],
-            "outlier_threshold": integration_params["peak_pixel_outlier_threshold"]
-        }
-        integrator = PeakIntegrator(
-            RegionGrower(**region_growth_params),
-            **other_params
-        )
-
-        return integrator
-
     def __init__(
             self,
-            region_grower,
+            min_intensity: float,
+            *,  # Mandatory keyword arguments
+            distance_threshold: float = 3.0,
+            max_size: float = 28.0,
             box_size: int = 5,
             smoothing_window_size: int = 5,
             snap_range: int = 5,
@@ -55,8 +51,12 @@ class PeakIntegrator:
 
         Parameters
         ----------
-        region_grower:
-            Implementation of the region growing algorithm.
+        min_intensity:
+            Region growth minimum intensity threshold (see RegionGrower)
+        distance_threshold:
+            Region growth distance threshold (see RegionGrower)
+        max_size:
+            Region growth maximum size (see RegionGrower)
         box_size:
             Size of box around estimated peak center in which to search
             for adjusted peak center. Must be odd.
@@ -80,7 +80,11 @@ class PeakIntegrator:
             'mean' to use the mean within the background shell or 'median' to
             use the median (excluding 0 values) within the background shell
         """
-        self.region_grower = region_grower
+        self.region_grower = RegionGrower(
+            distance_threshold=distance_threshold,
+            min_intensity=min_intensity,
+            max_size=max_size
+        )
 
         assert box_size % 2 == 1, "box_size must be odd"
         self.box_size = box_size
@@ -93,56 +97,51 @@ class PeakIntegrator:
 
     def integrate_peaks(
             self,
-            bank_id,
-            intensity,
-            peak_centers,
-            return_hulls=False,
-            return_headers=False,
-            return_status=False,
-            mask=None
-    ):
+            intensity: npt.NDArray,
+            peak_centers: npt.NDArray | None = None,
+            mask: npt.NDArray | None = None
+    ) -> list[IntegrationResult]:
         """
         Integrates all peaks for the bank
 
         Parameters
         ----------
-        bank_id:
-            integer id of the bank being processed
         intensity:
             (D, H, W)-shaped array of intensities measured by the bank
         peak_centers:
             (N, 3)-shaped array of coordinates of estimated peak centers to
             compute intensity statistics for. Coordinates are in order of
-            axes (D, H, W) of intensity array
-        return_hulls:
-            Whether to return convex hulls of peak regions for visualization
-        return_headers:
-            Whether to return column headers for the intensity data
-        return_status:
-            Whether to return integration status for each peak
+            axes (D, H, W) of intensity array. Optionally, pass None to use the
+            center of the array as the only estimated peak center.
         mask:
             Optional (D, H, W)-shaped boolean array indicating which pixels
-            are valid
+            are valid. None (default) means all pixels are valid
 
         Return
         ------
         outputs:
-            Array of the peak statistics. Optionally also the peak region
-            convex hulls for visualization. Optionally also the integration 
-            status for each peak.
+            Length-N array of IntegrationResult named tuples containing:
+            peak_intensity, peak_sigma, bg_density, bg_intensity, peak_hull,
+            inner_hull, outer_hull, and status (IntegrationStatus indicating
+            success/failure state of the integration)
         """
+
+        if peak_centers is None:
+            peak_centers = np.array(
+                [[
+                    intensity.shape[0] // 2,
+                    intensity.shape[1] // 2,
+                    intensity.shape[2] // 2
+                ]],
+                dtype=int
+            )
 
         # Get masks and hulls
         is_peak, peak_masks, bg_masks, peak_hulls, status = self._find_peak_regions(
             intensity, peak_centers, mask=mask
         )
 
-        if return_headers:
-            output_data = [[
-                'bank_id', 'peak_idx', 'bg_den', 'peak_int', 'bg_int', 'sigma'
-            ]]
-        else:
-            output_data = []
+        output_data = []
 
         # Use masks to compute intensity statistics
         for i_peak in range(len(peak_centers)):
@@ -166,29 +165,34 @@ class PeakIntegrator:
             else:
                 bg_density, peak_intensity, peak_bg_intensity, sigma = None, None, None, None
 
-            output_data.append([
-                bank_id,
-                i_peak,
-                bg_density,
-                peak_intensity,
-                peak_bg_intensity,
-                sigma,
-            ])
+            output_data.append(IntegrationResult(
+                peak_intensity=peak_intensity,
+                peak_sigma=sigma,
+                bg_intensity=peak_bg_intensity,
+                bg_density=bg_density,
+                peak_hull=peak_hulls[i_peak][1],
+                inner_hull=peak_hulls[i_peak][2],
+                outer_hull=peak_hulls[i_peak][3],
+                status=status[i_peak]
+            ))
 
-        return_value = [output_data]
+        return output_data
 
-        if return_hulls:
-            return_value.append(peak_hulls)
-        
-        if return_status:
-            return_value.append(status)
-
-        if len(return_value) == 1:
-            return return_value[0]
-        else:
-            return tuple(return_value)
-
-    def _find_peak_regions(self, intensity, peak_centers, mask=None):
+    def _find_peak_regions(
+            self,
+            intensity: npt.NDArray,
+            peak_centers: npt.NDArray,
+            mask: npt.NDArray | None = None
+    ) -> tuple[
+        npt.NDArray,
+        list[OffsetMask | None],
+        list[OffsetMask | None],
+        list[
+            tuple[None, None, None, None]
+            | tuple[ConvexHull, ConvexHull, ConvexHull, ConvexHull]
+        ],
+        list[IntegrationStatus]
+    ]:
         """
         Finds peak regions based on estimated peak centers and an intensity map
 
@@ -277,7 +281,7 @@ class PeakIntegrator:
                 peak_masks.append(None)
                 inner_masks.append(None)
                 bg_masks.append(None)
-                peak_hulls.append([None]*4)
+                peak_hulls.append((None,) * 4)
                 status.append(cur_status)
                 continue
             else:
@@ -317,7 +321,12 @@ class PeakIntegrator:
 
         return is_peak, peak_masks, bg_masks, peak_hulls, status
 
-    def _calculate_statistics(self, intensity, peak_mask, bg_mask):
+    def _calculate_statistics(
+            self,
+            intensity: npt.NDArray,
+            peak_mask: OffsetMask,
+            bg_mask: OffsetMask
+    ) -> tuple[float, float, float, float]:
         """
         Calculates peak intensity statistics from a peak and background mask
 
@@ -370,7 +379,7 @@ class PeakIntegrator:
 
         return bg_density, peak_intensity, peak_bg_intensity, sigma
 
-    def _smooth(self, input_tensor):
+    def _smooth(self, input_tensor: npt.NDArray) -> npt.NDArray:
         """
         Smooths a given image by using uniform averaging kernel. Uses
         zero-padding to obtain an image with the same size.
@@ -397,7 +406,11 @@ class PeakIntegrator:
 
         return smoothed
 
-    def _local_max(self, input_tensor, center_point):
+    def _local_max(
+            self,
+            input_tensor: npt.NDArray,
+            center_point: tuple[int, ...]
+    ) -> tuple[int, int, int]:
         """
         Finds the index of the pixel with the highest value in a box around
         the given center point
@@ -443,7 +456,10 @@ class PeakIntegrator:
         return global_max_idx
 
     @staticmethod
-    def _remove_outliers(data, threshold=3.0):
+    def _remove_outliers(
+            data: npt.NDArray,
+            threshold: float = 3.0
+    ) -> npt.NDArray:
         """
         Remove outliers from the dataset based on z-score.
 
@@ -462,7 +478,11 @@ class PeakIntegrator:
         z_scores = np.abs(zscore(data, axis=0))
         return data[(z_scores < threshold).all(axis=1)]
 
-    def _find_nearest_nonzero_point(self, start, intensity):
+    def _find_nearest_nonzero_point(
+            self,
+            start: tuple[int, int, int],
+            intensity: npt.NDArray
+    ) -> tuple[int, int, int]:
         """
         Searches around a given point to find the nearest point with a
         nonzero intensity (up to self.snap_range in l^inf distance)
@@ -497,7 +517,7 @@ class PeakIntegrator:
                         idx[other_axes[0]] = i1
                         idx[other_axes[1]] = i2
                         if intensity[*idx] != 0:
-                            return tuple(idx)
+                            return int(idx[0]), int(idx[1]), int(idx[2])
 
                 idx[axis] = min(start[axis] + r, intensity.shape[axis] - 1)
                 for i1 in range(*ranges[0]):
@@ -505,11 +525,19 @@ class PeakIntegrator:
                         idx[other_axes[0]] = i1
                         idx[other_axes[1]] = i2
                         if intensity[*idx] != 0:
-                            return tuple(idx)
+                            return int(idx[0]), int(idx[1]), int(idx[2])
 
         raise ValueError('Invalid intensity map--all intensities are 0!')
 
-    def _make_peak_hulls_and_masks(self, core_points, im_shape, mask=None):
+    def _make_peak_hulls_and_masks(
+            self,
+            core_points: npt.NDArray,
+            im_shape: tuple[int, int, int],
+            mask: npt.NDArray | None = None
+    ) -> tuple[
+        tuple[OffsetMask, OffsetMask, OffsetMask],
+        tuple[ConvexHull, ConvexHull, ConvexHull, ConvexHull]
+    ]:
         """
         Generate peak hulls and masks
 
@@ -559,7 +587,11 @@ class PeakIntegrator:
                 (core_hull, peak_hull, inner_hull, outer_hull))
 
     @staticmethod
-    def _hull_mask(hull, shape, mask=None):
+    def _hull_mask(
+            hull: ConvexHull,
+            shape: tuple[int, int, int],
+            mask: npt.NDArray | None = None
+    ) -> OffsetMask:
         """
         Generate an OffsetMask object with a mask that is True inside
         the given convex hull and False outside
@@ -614,7 +646,10 @@ class PeakIntegrator:
         return OffsetMask(hull_mask, min_vert)
 
     @staticmethod
-    def _expand_convex_hull(hull, scale_factor):
+    def _expand_convex_hull(
+            hull: ConvexHull,
+            scale_factor: float
+    ) -> ConvexHull:
 
         """
         Expand a convex hull along the radial direction with respect to the mean of the points.
