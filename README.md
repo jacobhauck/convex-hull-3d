@@ -26,6 +26,9 @@ event histogram:
 import convex_hull
 
 # Configure integration algorithm
+# These parameters are what I found to be effective for 64 x 64 x 64 images,
+# with the exceptiton of min_intensity, which needs to be set carefully per 
+# image
 integrator = convex_hull.PeakIntegrator(
     min_intensity=15.0,
     distance_threshold=3.0,
@@ -70,7 +73,7 @@ detector_mask = ...  # (D, H, W) mask
 peaks = integrator.integrate_peaks(events, mask=detector_mask)
 ```
 
-You can visualize the integration result in 3D by using the
+If plotly is installed, then you can visualize the integration result in 3D by using the
 `visualize_peak` function.
 
 ```python
@@ -138,5 +141,5 @@ Below is a description of the convex hull peak fitting algorithm, including how 
 6. If $|P| <{}$`min_peak_pixels`, then discard this peak
 7. Compute the convex hull $H_\text{core}$ of $P$, which we will call the core peak hull.
 8. Expand the core peak hull by scaling by a factor $s$ about its centroid to produce convex hulls $H_\text{peak}$ (the true peak hull, $s=1.1$), $H_\text{inner}$ (noise estimation inner boundary, $s=1.6$) and $H_\text{outer}$ (noise estimation outer boundary, $s=2.6$)
-9. Integrate over the true peak hull $H_\text{peak}$ to obtain the peak intensity $I_\text{peak}$ and uncertainty $\sigma_\text{peak}$. Background noise is subtracted by estimating the average background noise per pixel by integrating over the annulus-like region $H_\text{outer} \setminus H_\text{inner}$.
+9. Integrate over the true peak hull $H_\text{peak}$ to obtain the peak intensity $I_\text{peak}$ and uncertainty $\sigma_\text{peak}$. Background noise is subtracted by estimating the average (mean or median, depending on `background_estimate`) background noise per pixel by integrating over the annulus-like region $H_\text{outer} \setminus H_\text{inner}$.
 10. If $I_\text{peak} / \sigma_\text{peak} <{}$`min_peak_snr`, then discard this peak
