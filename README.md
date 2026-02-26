@@ -8,6 +8,8 @@ by convex hull fitting.
 
 Clone this repository, and then use `pip`
 ```commandline
+git clone https://github.com/jacobhauck/convex-hull-3d.git
+cd convex-hull-3d
 pip install .
 ```
 
@@ -27,8 +29,7 @@ import convex_hull
 
 # Configure integration algorithm
 # These parameters are what I found to be effective for 64 x 64 x 64 images,
-# with the exceptiton of min_intensity, which needs to be set carefully per 
-# image
+# except for min_intensity, which needs to be set carefully per image
 integrator = convex_hull.PeakIntegrator(
     min_intensity=15.0,
     distance_threshold=3.0,
