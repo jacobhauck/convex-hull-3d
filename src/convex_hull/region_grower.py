@@ -4,6 +4,7 @@ Region growing (agglomerative clustering) algorithm
 from math import ceil
 
 import numpy as np
+import numpy.typing as npt
 
 
 def _is_valid(d, h, w, layer, row, col, mask):
@@ -14,24 +15,31 @@ def _is_valid(d, h, w, layer, row, col, mask):
 
 
 class RegionGrower:
-    def __init__(self, distance_threshold, min_intensity, max_size):
+    def __init__(
+            self,
+            *,  # Mandatory keyword arguments
+            min_intensity: float,
+            distance_threshold: float = 3.0,
+            max_size: float = 28.0
+    ):
         """
         Parameters
         ----------
-
-        - distance_threshold: threshold for pixels to be considered neighbors
-
-        - min_intensity: minimum amount of neighboring intensity to consider
+        distance_threshold: threshold for pixels to be considered neighbors
+        min_intensity: minimum amount of neighboring intensity to consider
             growing the cluster from any of the neighbors of the current point
-
-        - max_size: maximum radius of the cluster
+        max_size: maximum radius of the cluster
         """
         self.distance_threshold = distance_threshold
         self.min_intensity = min_intensity
         self.max_size = max_size
         self.neighbors_rel = self._get_neighbors_rel()
 
-    def _get_neighbors_rel(self):
+    def _get_neighbors_rel(self) -> list[tuple[int, int, int]]:
+        """
+        Precomputes neighbor relative coordinates
+        :return: list of (layer, row, col) relative coordinates of neighbors
+        """
         threshold_int = ceil(self.distance_threshold)
         threshold_sq = self.distance_threshold ** 2
 
@@ -44,15 +52,18 @@ class RegionGrower:
 
         return neighbors_rel
 
-    def get_region(self, intensity, initial, mask=None):
+    def get_region(
+            self,
+            intensity: npt.NDArray,
+            initial: tuple[int, int, int],
+            mask: npt.NDArray | None = None
+    ) -> npt.NDArray:
         """
         Gets the region by growing from the initial point
 
         Parameters
         ----------
-
         - intensity: Array of shape (D, H, W) of intensity values
-
         - initial: (layer, row, col) coordinates of initial point from which to grow
         - mask: optional (D, H, W) boolean array indicating which points are valid
 
@@ -118,4 +129,3 @@ class RegionGrower:
                         cluster.add(neighbor_point)
 
         return np.array(list(cluster), dtype=int)
-
