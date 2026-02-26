@@ -29,7 +29,8 @@ import convex_hull
 
 # Configure integration algorithm
 # These parameters are what I found to be effective for 64 x 64 x 64 images,
-# except for min_intensity, which needs to be set carefully per image
+# except for min_intensity, which needs to be set carefully per image (see 
+# "Setting the min_intensity Threshold" below)
 integrator = convex_hull.PeakIntegrator(
     min_intensity=15.0,
     distance_threshold=3.0,
@@ -50,9 +51,13 @@ events = ...  # (D, H, W) array containing histogram of events
 peaks = integrator.integrate_peaks(events)
 # peaks is a list of IntegrationResult objects
 ```
-This results in a list containing one `IntegrationResult` for a peak
-at the center of the histogram. Pass a custom array of starting points to 
-integrate multiple peaks in one histogram.
+This results in a list `peaks` containing one `IntegrationResult` for a peak
+at the center of the histogram; each `IntegrationResult` contains the integrated
+intensity, uncertainty in intensity, fitted convex hulls, and some other useful
+information.
+
+If desired, you can pass a custom array of starting points to integrate 
+multiple peaks in one histogram.
 
 ```python
 # Set up a custom set of potential peak locations
@@ -128,6 +133,46 @@ fig.show()  # or fig.write_html(), ...
     - $\uparrow$ less conservative, more irregular peaks
     - $\downarrow$ more conservative, more regular peaks
 
+### Setting the `min_intensity` Threshold
+
+Since the clustering algorithm depends strongly on the `min_intensity` threshold,
+it is necessary to set this parameter automatically and dynamically. The module
+`thresholding.py` is devoted to this task. It contains many subclasses of the
+main base class `BaseThreshold`, each of which defines an algorithm for selecting
+the `min_intensity` parameter. I have found that the `SNRScanThreshold` algorithm
+works the most robustly. This algorithm performs a line search to find the 
+largest `min_intensity` threshold that results in a local peak (as a function 
+of `min_intensity`) in the signal-to-noise ratio of the integrated peak.
+
+You can use `SNRScanThreshold` as follows (the other thresholding methods work
+the same, but have different configuration parameters).
+```python
+import convex_hull.thresholding
+
+# Configure the SNRScanThreshold algorithm
+# Note that the integrator parameter is the integrator you want to
+# compute the best min_intensity threshold for--all your other PeakIntegrator
+# parameters are contained in this object.
+snr_scan = convex_hull.thresholding.SNRScanThreshold(
+    start_intensity=0.5,
+    scan_steps=100,
+    integrator=integrator,
+    min_threshold=0.5,
+    num_processes=8
+)
+
+# Load many peak event arrays
+array_of_events = ...
+array_of_masks = ...
+
+# Use snr_scan to set min_intensity dynamically for each peak to be integrated
+for events, detector_mask in zip(array_of_events, array_of_masks):
+    min_intensity = snr_scan.get_threshold(events, detector_mask)
+    integrator.region_grower.min_intensity = min_intensity
+    peak = integrator.integrate_peaks(events, mask=detector_mask)
+    # Do something with the result
+    ...
+```
 
 ## Algorithm
 
