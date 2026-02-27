@@ -44,7 +44,9 @@ def visualize_peak(
         x=x.flatten(),
         y=y.flatten(),
         z=z.flatten(),
-        value=intensity,
+        isomin=np.min(intensity),
+        isomax=np.max(intensity),
+        value=intensity.flatten(),
         opacity=intensity_opacity,
         surface_count=17
     )]

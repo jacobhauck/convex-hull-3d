@@ -54,7 +54,14 @@ peaks = integrator.integrate_peaks(events)
 This results in a list `peaks` containing one `IntegrationResult` for a peak
 at the center of the histogram; each `IntegrationResult` contains the integrated
 intensity, uncertainty in intensity, fitted convex hulls, and some other useful
-information.
+information. Run the script `example.py` to see a complete example with a simple
+synthetic peak.
+```commandline
+python example.py
+```
+This will open plots showing the SNR curve as a function of the `min_intensity`
+threshold as well as a 3D volume plot of the peak and fitted convex hull (note:
+this requires plotly to be installed).
 
 If desired, you can pass a custom array of starting points to integrate 
 multiple peaks in one histogram.
