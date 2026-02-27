@@ -59,9 +59,11 @@ synthetic peak.
 ```commandline
 python example.py
 ```
-This will open plots showing the SNR curve as a function of the `min_intensity`
+This will open plots like those below that show the SNR curve as a function of the `min_intensity`
 threshold as well as a 3D volume plot of the peak and fitted convex hull (note:
 this requires plotly to be installed).
+![Example peak events](example_peak.png)
+![Example SNR curve](example_snr_curve.png)
 
 If desired, you can pass a custom array of starting points to integrate 
 multiple peaks in one histogram.
