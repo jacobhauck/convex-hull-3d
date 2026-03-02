@@ -40,7 +40,7 @@ integrator = convex_hull.PeakIntegrator(
     snap_range=8,
     min_peak_pixels=200,
     min_peak_snr=1.0,
-    background_estimate='median',
+    background_estimate='mean',
     outlier_threshold=2.0
 )
 
@@ -163,7 +163,6 @@ import convex_hull.thresholding
 # compute the best min_intensity threshold for--all your other PeakIntegrator
 # parameters are contained in this object.
 snr_scan = convex_hull.thresholding.SNRScanThreshold(
-    start_intensity=0.5,
     scan_steps=100,
     integrator=integrator,
     min_threshold=0.5,

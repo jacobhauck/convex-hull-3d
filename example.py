@@ -1,5 +1,5 @@
 """
-A simple example of a perfectly Gaussian-shaped peak
+A simple example of a perfectly Gaussian-shaped peak with uniform background
 """
 import numpy as np
 import plotly.graph_objects as go
@@ -55,7 +55,6 @@ def main():
 
     # Construct SNR scan threshold calculator
     snr_scan = SNRScanThreshold(
-        start_intensity=0.5,
         scan_steps=100,
         integrator=integrator,
         min_threshold=0.5,
