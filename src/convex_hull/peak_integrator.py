@@ -364,10 +364,21 @@ class PeakIntegrator:
         total_peak_intensity = intensity[peak_indices[0], peak_indices[1], peak_indices[2]].sum()
         if self.background_estimate == 'mean':
             total_bg_intensity = intensity[bg_indices[0], bg_indices[1], bg_indices[2]].sum()
-        else:
+        elif self.background_estimate == 'median_nonzero':
             bg_intensity = intensity[bg_indices[0], bg_indices[1], bg_indices[2]]
             bg_intensity = bg_intensity[bg_intensity > 0]
             total_bg_intensity = np.median(bg_intensity) * len(bg_indices[0])
+        elif self.background_estimate == 'mean_iqr':
+            bg_intensity = intensity[bg_indices[0], bg_indices[1], bg_indices[2]]
+            q1 = np.quantile(bg_intensity, 0.25)
+            q3 = np.quantile(bg_intensity, 0.75)
+            iqr = (q1 <= bg_intensity) & (bg_intensity <= q3)
+            total_bg_intensity = np.mean(bg_intensity[iqr]) * len(bg_indices[0])
+        elif self.background_estimate == 'median':
+            bg_intensity = intensity[bg_indices[0], bg_indices[1], bg_indices[2]]
+            total_bg_intensity = np.median(bg_intensity) * len(bg_indices[0])
+        else:
+            raise ValueError('Invalid background estimate method')
 
         peak_bg_intensity = peak2bg * total_bg_intensity
         peak_bg_variance = peak2bg ** 2 * total_bg_intensity

@@ -103,8 +103,9 @@ def find_first_nonzero_volume(
     min_intensity = 0
     max_intensity = np.max(events)
     cur_min_intensity = max_intensity / 2
+    last_valid_intensity = None
     while max_intensity - cur_min_intensity > 0.1:
-        peak_integrator.region_grower.min_intensity = min_intensity
+        peak_integrator.region_grower.min_intensity = cur_min_intensity
         integration_result = peak_integrator.integrate_peaks(events, mask=detector_mask)[0]
         
         if integration_result.peak_intensity is None or integration_result.peak_hull.volume == 0:
@@ -112,12 +113,69 @@ def find_first_nonzero_volume(
             cur_min_intensity = (min_intensity + cur_min_intensity) / 2.0
         else:
             min_intensity = cur_min_intensity
+            last_valid_intensity = cur_min_intensity
             cur_min_intensity = (max_intensity + cur_min_intensity) / 2.0
+
+    # If no valid integrations are found, use current (lowest)
+    if last_valid_intensity is None:
+        last_valid_intensity = cur_min_intensity
+
+    # Reset original min_intensity
+    peak_integrator.region_grower.min_intensity = original_min_intensity
+
+    return last_valid_intensity
+
+
+def find_first_nonzero_background(
+        peak_integrator: PeakIntegrator,
+        events: npt.NDArray,
+        detector_mask: npt.NDArray,
+        max_threshold: float
+) -> float:
+    """
+    Finds the smallest min_intensity threshold parameter of the given
+    peak_integrator that returns a nonzero background intensity for 
+    the given event histogram.
+
+    Parameters
+    ----------
+    peak_integrator: PeakIntegrator to use for integration
+    events: (D, H, W) histogram of detector events
+    detector_mask: (D, H, W) boolean-valued array indicating valid
+        detector pixels
+    max_threshold: Initial maximum threshold to use for bisection search
+
+    Return
+    ------
+    Smallest min_intensity threshold parameter of peak_integrator that
+        provides the first nonzero background intensity
+    """
+    original_min_intensity = peak_integrator.region_grower.min_intensity
+    min_intensity = 0
+    max_intensity = max_threshold
+    cur_min_intensity = max_intensity / 2
+    any_nonzero = False
+    while max_intensity - cur_min_intensity > 0.1:
+        peak_integrator.region_grower.min_intensity = cur_min_intensity
+        integration_result = peak_integrator.integrate_peaks(events, mask=detector_mask)[0]
+        
+        if integration_result.bg_intensity is not None and integration_result.bg_intensity > 0.0:
+            max_intensity = cur_min_intensity
+            cur_min_intensity = (min_intensity + cur_min_intensity) / 2.0
+            any_nonzero = True
+        else:
+            min_intensity = cur_min_intensity
+            cur_min_intensity = (max_intensity + cur_min_intensity) / 2.0
+
+    # return max if no nonzero backgrounds are found
+    if not any_nonzero:
+        cur_min_intensity = max_threshold
 
     # Reset original min_intensity
     peak_integrator.region_grower.min_intensity = original_min_intensity
 
     return cur_min_intensity
+
 
 
 class BaseThreshold:
@@ -407,7 +465,6 @@ class SNRScanThreshold(BaseThreshold):
     def __init__(
             self,
             *,  # Mandatory keyword arguments
-            start_intensity: float,
             scan_steps: int,
             integrator: PeakIntegrator,
             min_threshold: float,
@@ -419,7 +476,6 @@ class SNRScanThreshold(BaseThreshold):
 
         Parameters
         ----------
-        start_intensity: Smallest intensity to use in the scan for local maxima
         scan_steps: Number of steps in the scan
         integrator: PeakIntegrator to use for integration
         min_threshold: Minimum allowable threshold
@@ -428,7 +484,6 @@ class SNRScanThreshold(BaseThreshold):
             If you use multiprocessing, remember to call close() to close the
             process pool when you are done with this object.
         """
-        self.start_intensity = start_intensity
         self.scan_steps = scan_steps
         self.integrator = integrator
         self.min_threshold = min_threshold
@@ -445,9 +500,22 @@ class SNRScanThreshold(BaseThreshold):
         self.pool.close()
 
     def get_threshold(self, events, detector_mask):
-        max_intensity = find_first_nonzero_volume(self.integrator, events, detector_mask)
+        max_intensity = find_first_nonzero_volume(
+            self.integrator, 
+            events,
+            detector_mask
+        )
+        start_intensity = find_first_nonzero_background(
+            self.integrator,
+            events,
+            detector_mask,
+            max_intensity
+        )
+        print(f'Starting scan with min_intensity = {start_intensity}, '
+              f'max_intensity = {max_intensity}')
+
         self.scan_min_intensities = np.linspace(
-            self.start_intensity,
+            start_intensity,
             max_intensity,
             self.scan_steps
         )
@@ -482,9 +550,9 @@ class SNRScanThreshold(BaseThreshold):
         self.scan_min_intensities = scan_min_intensities
 
         if len(scan_snr) == 0:
-            min_intensity = self.min_threshold
+            min_intensity = start_intensity
         else:
-            kernel = np.exp(-(np.arange(9) - 4)**2/2/1.6**2)
+            kernel = np.exp(-(np.arange(7) - 3)**2/2/1.2**2)
             kernel /= kernel.sum()
             snr_smooth: npt.NDArray = convolve1d(scan_snr, kernel)
             self.snr_smooth = snr_smooth
@@ -493,7 +561,7 @@ class SNRScanThreshold(BaseThreshold):
             # noinspection PyUnresolvedReferences
             snr_peaks = snr_peaks[scan_min_intensities[snr_peaks] < m]
             if len(snr_peaks) == 0:
-                min_intensity = self.min_threshold
+                min_intensity = start_intensity
             else:
                 i_best = np.argmax(scan_min_intensities[snr_peaks])
                 min_intensity = scan_min_intensities[snr_peaks[i_best]]
